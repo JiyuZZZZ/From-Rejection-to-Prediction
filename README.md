@@ -3,7 +3,7 @@ A three-part applied statistics project using R: rejection sampling, time series
 
 # 📁 Sample Data#
 
-This repository includes sample datasets (`USD_GBP_sample.csv` and `indices_sample.xlsx`)  
+This repository includes sample datasets (`USD_GBP_sample.csv` and `Indices_sample.xlsx`)  
 to allow others to run and explore the code without access to the original coursework files.
 
 These files contain simulated values and do not represent real market data.
