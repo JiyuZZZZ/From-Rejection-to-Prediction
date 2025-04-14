@@ -1,7 +1,7 @@
 ## From-Rejection-to-Prediction##
 A three-part applied statistics project using R: rejection sampling, time series modeling (ARIMA &amp; VAR), and volatility forecasting with GARCH.
 
-# 📁 Sample Data3
+# 📁 Sample Data#
 
 This repository includes sample datasets (`usd_gbp_sample.csv` and `indices_sample.xlsx`)  
 to allow others to run and explore the code without access to the original coursework files.
