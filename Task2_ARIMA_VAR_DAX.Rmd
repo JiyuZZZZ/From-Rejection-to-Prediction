@@ -1,0 +1,197 @@
+---
+title: "ARIMA_VAR_DAX-Report"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+  html_document:
+    latex_engine: lualatex
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+In this report, following the requirements outlined in Task 2, I will conduct model fitting, evaluation, and prediction for the DAX data, providing some analysis and results.
+```{r, message=FALSE, warning=FALSE}
+library(openxlsx)
+library(vars)
+library(forecast)
+```
+
+```{r, fig.cap="Time Series Plot of DAX Index Closing Prices"}
+# Part 1
+# Read the file and load data of DAX
+dax = read.xlsx("/Users/jiyuzhang/Desktop/Leeds\ Master/semester_1/Applied\ stat\ and\ prob/Coursework/Indices.xlsx",
+                sheet = "DAX")
+# Plot the time series
+plot(ts(dax$Close), type = 'l', ylab = "Original dax CLose",
+     main = "Time series of original dax Close data")
+```
+
+
+\vspace{1cm}
+
+Based on the time series plot(Figure 1), it can be determined that the sequence is not stationary. As it is financial data, in order to stabilize variance and possibly to induce stationary, a logarithmic transformation was applied followed by setting the lag to 1. Consider the logarithmic returns as follows:
+
+$$
+lr_{1}, lr_{2}, ..., lr_{n},\qquad 
+where\;lr_{t}=ln({x_t})-ln({x_{t-1}})=ln\left(\frac{x_t}{x_{t-1}}\right)
+$$
+```{r, fig.cap="Time Series of DAX Closing Prices Using Logarithmic Returns"}
+# Try the logarithmic returns to check stationary
+dax_log=log(dax$Close)
+# Produce a time series of the differences
+dax_diff=diff(dax_log)
+# Plot the time series of the differences
+plot(ts(dax_diff), type = 'l', ylab = "Logarithmic returns",
+     main = "Time series of dax Close data using the logarithmic returns")
+```
+```{r, fig.cap="ACF Plot for Differenced DAX Series"}
+# Show the ACF plot
+acf(dax_diff)
+```
+```{r, fig.cap="PACF Plot for Differenced DAX Series"}
+# Show the PACF plot
+pacf(dax_diff)
+```
+
+\vspace{1cm}
+
+The time series of the logarithmic returns is stationary, as evidenced by both the ACF(Figure 3) and PACF(Figure 4) plots. Therefore, we decided to fit an ARIMA model to the logged DAX Close data, initially assuming that the best model is ARIMA(0,1,1) according to ACF and PACF plots. Then we set more 4 models with different parameters.
+
+```{r}
+# Fit model with different parameters
+# Automatically best model
+model_1 = auto.arima(dax_log)
+# ARIMA(0, 1, 1)
+model_2 = arima(dax_log, order = c(0,1,1))
+# ARIMA(1, 1, 0)
+model_3 = arima(dax_log, order = c(1,1,0))
+# ARIMA(1, 1, 1)
+model_4 = arima(dax_log, order = c(1,1,1))
+# ARIMA(2, 1, 1)
+model_5 = arima(dax_log, order = c(2,1,1))
+# ARIMA(1, 1, 2)
+model_6 = arima(dax_log, order = c(1,1,2))
+```
+
+\vspace{1cm}
+
+Subsequently, we attempted to fit and comparatively analyze six models, including the hypothesized best model and the automatically selected best model.
+
+\vspace{0.5cm}
+
+***Theoretical background***
+
+The hypotheses for the Ljung-Box test are:
+
+**Null Hypothesis (H0)**: The time series residuals are independently distributed, indicating no autocorrelation. In other words, the residuals are white noise.
+
+**Alternative Hypothesis (H1)**: The time series residuals exhibit autocorrelation at least at one lag. This indicates that the residuals are not white noise, and there might be autocorrelation that the model has not captured.
+
+The test statistic \( Q \) approximately follows a chi-squared distribution with \( h \) degrees of freedom (\( \chi^2 \)). If the value of \( Q \) exceeds the critical value of the chi-squared distribution, or if the corresponding p-value is less than the selected significance level (e.g., 0.05), we reject the null hypothesis, suggesting that there is evidence of autocorrelation in the residuals. Conversely, if the p-value is above the significance level, we do not reject the null hypothesis, indicating that the residuals could be considered as white noise.
+
+The test statistic of Ljung-Box test is computed as follows:
+
+$$
+Q = n(n + 2) \sum_{k=1}^{K} \hat{\rho}_k^2 (n - k)
+$$
+
+where:
+
+- \( n \) is the sample size (the number of residuals).
+- \( K \) is the number of lags to test for autocorrelation.
+- \( \hat{\rho}_k \) is the sample autocorrelation coefficient at lag \( k \).
+
+The test statistic \( Q \) approximately follows a chi-squared distribution with \( K-p-q \) degrees of freedom (\( \chi^2 \)). 
+
+
+The Akaike Information Criterion (AIC) is a measure of the relative quality of a statistical model, for a given set of data. It provides a means for model selection. The AIC estimates the quality of each model, relative to each of the other models. The formula for AIC is given by:
+
+$$
+\text{AIC} = 2k - 2\ln(L)
+$$
+
+Here, \( k \) represents the number of estimated parameters in the model, and \( L \) is the likelihood of the model. AIC rewards the goodness of fit, but it also includes a penalty that is an increasing function of the number of estimated parameters. This penalty discourages overfitting.
+
+```{r}
+# Create a list to store models
+models = list(model_auto=model_1, ARIMA_011=model_2, 
+              ARIMA_110=model_3, ARIMA_111=model_4,
+              ARIMA_211=model_5, ARIMA_112=model_6)
+# Create a list to store models' residuals
+models_r = list(model_auto_r=model_1$residuals, ARIMA_110_r=model_2$residuals, 
+              ARIMA_011_r=model_3$residuals, ARIMA_111_r=model_4$residuals,
+              ARIMA_211_r=model_5$residuals, ARIMA_112_r=model_6$residuals)
+# Calculate the AIC values of the 6 models
+aic_values = sapply(models, AIC)
+# Choose the best model based on AIC values
+best_model = models[[which.min(aic_values)]]
+# Apply Ljung-Box test to the models' residuals
+LBtest_values = sapply(models_r, 
+                       function(resid) Box.test(resid, type = "Ljung-Box"))
+
+print(aic_values) # Show the AIC values
+summary(model_1) # Show the automatically best model
+print(best_model) # Show the best based on AIC
+print(LBtest_values) # Show the results of Ljung-Box tests to compare
+```
+
+
+
+From the comparison of the AIC values of the six models, it can be seen that both the automatically selected best model and the hypothesized best model share the same smallest AIC values. The summary of the automatically selected best model and the hypothesized best model are identical, with the same model parameters. Subsequently, we employed the Ljung-Box test to examine the autocorrelation of the residuals of each model. The test results show that the p-values of all six models are very close to 1, far exceeding the usual significance levels such as 0.05 or 0.01, which provides us with sufficient evidence to do not reject the null hypothesis, indicating that there is no autocorrelation in the model residuals. The model with the highest p-value is ARIMA(1, 1, 1), with the hypothesized best model having a p-value at 0.9272724, proving that both models have captured almost all regularities in the data, with the remaining random fluctuations possibly arising from white noise. 
+The results from the AIC value comparison and the Ljung-Box test are slightly different. There may be caused by the two criteria have different emphases. The Ljung-Box test may not detect nonlinearities or heteroskedasticity in the model residuals, and these properties may lead to changes in the AIC value. AIC is a criterion based on information theory for model selection. It aims to select the model with the smallest prediction error, while penalizing the complexity of the model (the number of parameters). 
+Due to the Ljung-Box test's sensitivity to sample size, it can discern statistical significance for even slight autocorrelation within the residuals when dealing with large datasets, thereby yielding lower p-values. However, despite the substantial size of our sample, the Ljung-Box test for the hypothesized best model yielded a very favorable p-value. Moreover, the model exhibited superior performance in the comparison of AIC values. Thus, overall, the ARIMA(0,1,1) model emerges as the optimal model.
+
+\vspace{1cm}
+
+We use the ARIMA(0,1,1) model for prediction and plot the forecast values of the next ten trading days(Figure 5), along with the 80% and 95% prediction intervals.
+
+```{r, fig.cap="Forecasted Values from ARIMA(0,1,1) Model with Prediction Intervals"}
+# Forecost 10 trading days
+forecast = forecast(best_model, h = 10)
+plot(forecast) # Show the forecasting plot
+```
+
+
+
+During the fitting process of the VAR model, I first used VARselect to identify the best VAR model. The results indicate that the parameters should be set to 1 according to four criteria: AIC, HQ, BIC, and FPE, which is consistent with the findings for Close data in the first part. Thus, I used the VAR model with parameters set to 1 to forecast the next ten trading days and obtained the following figure.
+
+```{r, fig.width=8, fig.height=3, fig.cap="Forecasted Values from VAR(2) Model with Prediction Intervals"}
+# Part 2: VAR
+# Apply logarithmic transformation to the other three time series
+open = log(dax$Open)
+high = log(dax$High)
+low = log(dax$Low)
+
+# Combine the four time series 
+x = cbind(open,high,low,dax_log)
+
+# Choose the best model parameter
+var_select = VARselect(x, lag.max = 2, type="const")
+print(var_select)
+
+# Set model parameter to 1
+var_model = VAR(x, p = 1, type = "const")
+
+# Forecast 10 trading days using VAR(1) model
+var_forecast = predict(var_model, h = 10)
+par(mar = c(0, 0, 0, 0) + 0.1)#Adjust the size
+plot(var_forecast)#Show the forecasting plot
+```
+
+
+
+This forecast plot(Figure 6), similar to the one in the first part, shows that the longer the forecast horizon, the wider the prediction intervals become. This is due to the influence of the error term in the model, accumulated errors, and the impact of external factors of uncertainty, leading to a decrease in the accuracy of the model's predictions as the forecast horizon lengthens.
+
+\vspace{1cm}
+
+# Conclusion
+
+The analysis conducted in this report provides comprehensive insights into the time series data of the DAX index. The application of ARIMA and VAR models has allowed for a deeper understanding of the underlying patterns and potential forecasting capabilities. The ARIMA(0,1,1) model, in particular, was identified as optimal based on the AIC criterion, suggesting a balance between model fit and complexity.
+
+Furthermore, the Ljung-Box test results have confirmed that the residuals of our chosen models do not exhibit significant autocorrelation, thus reinforcing the models' adequacy. The forecasting exercises have also illustrated the effects of uncertainty and model error terms over longer prediction horizons, a valuable lesson for future financial forecasting endeavors.
+
+Overall, the analytical approaches adopted herein underscore the importance of careful model selection and the need for considering both statistical fit and the practical implications of model assumptions. The findings pave the way for future research to build upon these models, potentially incorporating additional variables or exploring alternative modeling techniques to enhance predictive accuracy for financial time series data.

@@ -1,0 +1,242 @@
+---
+title: "Rejection_Sampling_Report"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+        latex_engine: lualatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+This report will generate samples using the rejection algorithm based on the provided probability density function, and then analyze the sample characteristics through various diagnostic plots and the Kolmogorov-Smirnov hypothesis test, offering an evaluation of the samples and sampling process.
+
+\vspace{1cm}
+
+# Normalization
+
+Firstly, since the expression for the given probability function of X is not the exact probability density function (pdf) of X, it is necessary to normalize it. This involves calculating the normalization constant, with the process detailed as follows:
+
+We assume the normalization constant is \( A \)
+
+\[
+A \times \int_{0}^{\infty} e^{-x}(1 + \sin(mx))\,dx = 1
+\]
+
+\[
+A \times \left[ \int_{0}^{\infty} e^{-x}\,dx + \int_{0}^{\infty} \sin(mx)\,dx \right] = 1
+\]
+
+\[
+A \times \left[ 1 + \Im\left( \int_{0}^{\infty} e^{-(1-im)x}\,dx \right) \right] = 1
+\]
+
+\[
+A \times \left( 1 + \frac{m}{1 + m^2} \right) = 1
+\]
+
+\[
+A = \frac{1 + m^2}{1 + m + m^2}, \text{where } m \text{ is } 21
+\]
+
+\[
+A \approx 0.954643628
+\]
+
+```{r, message=FALSE, warning=FALSE}
+parameter = 21
+nc = 0.954643628 #Normalizing constant
+library(openxlsx)
+library(forecast)
+```
+
+\vspace{1cm}
+
+# Rejection Algorithm Sampling
+
+We use the rejection algorithm to sample.
+
+***Theoretical background:***
+
+**General Rejection Algorithm**
+
+1. Generate \( Y = y \sim g_Y(\cdot) \).
+
+2. Generate \( U = u \sim U(0, 1) \).
+
+3. If \( u \leq \frac{f_X(y)}{M g_Y(y)} \) set \( X = y \) and return this value. Otherwise go to 1. 
+
+Here \(M := \sup_x \frac{f_X(x)}{g_Y(x)}=\frac{0.954643428e^{-x}(1+sin(21x))}{e^{-x}}=1.909286856\) in this question.
+
+```{r}
+# Set a rejection sampling function
+generate_sample = function(parameter, n) {
+  random_variables = numeric(0)  # Initializes an empty vector to store the accepted sample
+  generated_numbers = 0
+  # Rejection constant c
+  c = 1.909286856  # This is determined by the ratio of the target pdf to the exponential distribution pdf
+  while (generated_numbers < n) {
+    # Generate an exponential distribution sample and use runif to simulate
+    x = -log(runif(1))  
+    u = runif(1)        # Generate uniform random numbers for accept/reject
+    f_x = nc * exp(-x) * (1 + sin(parameter * x)) # Target function
+    g_x = exp(-x)  # Probability density function of exponential distribution
+    # If the uniform random number u is less than or equal to the ratio of the target to the proposed pdf, accept y
+    if (u <= f_x / (c * g_x)) {
+      random_variables = c(random_variables, x)
+      generated_numbers = generated_numbers + 1
+    }
+  }
+  return(random_variables)
+}
+# Set the sample size
+n = 100000
+# Generate 100000 samples using rejection sampling function
+sampled_data=generate_sample(parameter, n)
+```
+
+Then we produce 2 figure to compare the theoretical CDF and the empirical CDF of samples.
+
+```{r}
+# Compare theoretical cdf and empirical cdf
+empirical_CDF = ecdf(sampled_data)
+theoretical_cdf = function(x) {
+  integrate(function(t) nc * exp(-t) * (1 + sin(parameter * t)), 0, x)$value
+}
+# Create a data point set for a theoretical cdf
+x_values = seq(0, max(sampled_data), length.out = 1000)
+
+# Calculate the theoretical cdf
+theoretical_CDF = sapply(x_values, theoretical_cdf)
+```
+
+```{r, fig.cap="A comparison of empirical and theoretical CDFs, indicating the model's fit to the observed data."}
+# Draw a graph to show theoretical cdf and empirical cdf
+par(mfrow = c(1, 1)) 
+plot(empirical_CDF, main="ECDF vs Theoretical cdf", xlab="Value", ylab="cdf", ylim=c(0,1.1))
+lines(x_values, theoretical_CDF, col="red", type="l")
+legend("topright", legend=c("Empirical cdf", "Theoretical cdf"),
+       col=c("black", "red"), lty=1, cex=0.8)  
+```
+
+```{r,fig.cap="A histogram to compare the theoretical pdf and empirical pdf"}
+hist(sampled_data, main="Histogram of empirical pdf and theoretical pdf",
+     xlab="Value", ylab="Density", breaks=600, probability = TRUE)
+# Rendering theory pdf
+curve(nc * exp(-x) * (1 + sin(parameter * x)), add=TRUE,
+      col="red", lwd=2, from=0, to=max(sampled_data))
+legend("topright", legend=c("Theoretical pdf"),
+       col=c("red"), lty=c(1), cex=0.8) 
+```
+
+
+In the Cumulative Distribution Function (CDF) plot (Figure 1), the empirical cumulative density function calculated from the samples closely overlaps visually with the theoretical cumulative density function. The wave-like patterns observed in the plot are influenced by the periodic sine function. In the histogram (Figure 2), the density in certain intervals exceeds one. This is attributed to the fact that the display is not an entirely accurate representation of the empirical pdf and theoretical pdf. Consequently, setting too small a value for the 'breaks' parameter in the graph can result in densities greater than one in some high-density intervals. However, given the characteristic of histograms where the total area sums to one, they effectively demonstrate the general distribution of the data. Similar to the results shown in the CDF plot, the empirical pdf displayed in the histogram and the theoretical pdf represented by the red line in the graph align almost perfectly. These two figures intuitively validate the assumptions about the underlying data distribution. The empirical and theoretical distributions seem to have a reasonable consistency, indicating that the fitted data closely matches the theoretical model. However, there are some discrepancies, particularly in the tails of the histogram and certain intervals. These may be attributed to factors such as sample size, bin size selection, or model fit, which warrant further investigation.
+
+\vspace{1cm}
+
+# Kolmogorov-Smirnov Test
+
+Subsequently, a Two-sample Kolmogorov–Smirnov test will be conducted to compare the empirical CDF of the samples with the theoretical CDF.
+
+***Theoretical background:***
+
+***Hypotheses***
+
+Assume we have two groups of data X and Y.
+
+- **Null Hypothesis (H0)**: There is no difference between the distributions of the two groups.
+- **Alternative Hypothesis (H1)**: There is a difference between the distributions of the two groups.
+
+***Statistical Methods***
+
+1. **Two-sample test**: Test the difference between \( X \) (size \( n \)) and \( Y \) (size \( m \)).
+2. **Empirical Cumulative Distribution Function (ECDF)**: The statistical method for estimating the cumulative distribution function of a sample, denoted by \( F_n(x) \) for sample \( X \), and \( G_m(x) \) for sample \( Y \).
+3. **Kolmogorov-Smirnov Test (KS test)**: The KS statistic \( D_{n,m} \) measures the maximum distance between ECDFs of two samples, given by:
+
+   $$ D_{n,m} = \max_x | F_n(x) - G_m(x) | $$
+
+   where the subscript \( x \) represents the point at which the maximum difference occurs, and ECDF represents the empirical cumulative distribution function.
+4. **Significance Level**: If the p-value is less than or equal to the significance level (0.05), we reject the null hypothesis and conclude that there is a statistically significant difference between the two samples.
+
+***Conclusion***
+
+- If the p-value of the KS test is less than or equal to the significance level (typically, 0.05), we reject the null hypothesis, indicating that there is a significant difference between the two groups.
+- If the p-value is greater than the significance level, we do not reject the null hypothesis, indicating that the difference between the two groups is not statistically significant.
+
+\vspace{0.5cm}
+
+Here we employed the inverse transform sampling method by initially generating a number of values as many as the sampled data, uniformly distributed between zero and one. Subsequently, these values were subjected to an inverse transformation using the theoretical cumulative distribution function (CDF). This process yielded a theoretical sample that conformed to the stipulated theoretical distribution. We then conducted a Two-sample Kolmogorov–Smirnov test to compare the sampled data with the theoretical sample. The results of this test were reported in the final stage of the analysis. The process mathematically shown as follows:
+
+1. Assume there are n samples \(\vec{y}\) and the cdf of samples is \(F_X(x)\).
+2. Simulate \( u_i \sim U(0,1) \), where \( i \in \{1, n\} \).
+3. Inverse them to theoretical samples by solving \(X_i=F^{-1}_X(u_i)\).
+4. Let \(\vec{x}\) be the vector of theoretical samples.
+5. Show ks.test(\(\vec{y}\), \(\vec{x}\)).
+
+```{r}
+# Kolmogorov-Smirnov test
+# Set a function to inverse uniformly random samples
+inverse_cdf = function(p, lower = 0, upper = 1000) {
+  uniroot(function(x) theoretical_cdf(x) - p, lower = lower, upper = upper)$root
+}
+# Generate the theoretical samples
+theoretical_sample_generate = function(n){
+  x = runif(n, min = 0, max = 1) # Generate uniformly random samples
+  theoretical_sample = numeric() # An empty set to store theoretical samples
+  for (i in 1:n){
+    theoretical_sample[i] = inverse_cdf(x[i])
+  }
+  return(theoretical_sample)
+}
+
+ks_test = function(sampled_data) {
+  n = length(sampled_data) # Take the length of sampled data
+  # Generate theoretical data as many as sampled data
+  theoretical_sample = theoretical_sample_generate(n)
+  # KS inspection
+  ks_test_result = ks.test(sampled_data, theoretical_sample)
+  return(ks_test_result)
+}
+
+ks_test_n10 = ks_test(generate_sample(parameter, 10))
+ks_test_n100 = ks_test(generate_sample(parameter, 100))
+ks_test_n1000 = ks_test(generate_sample(parameter, 1000))
+
+print(ks_test_n10)
+print(ks_test_n100)
+print(ks_test_n1000)
+```
+
+\vspace{0.5cm}
+
+The alternative hypothesis for this statistical test is bidirectional, which implies that the test is designed to detect any existing discrepancies between the two distributions under consideration, irrespective of the discrepancies' directionality. Herein, we sequentially analyze the outcomes of three distinct sample sizes:
+
+## Sample Size of 10
+
+A sample size of ten is indicative of a small dataset, automatically triggering the employment of the exact two-sample test due to the potential violation of the asymptotic test's normality assumption inherent in small samples. The `D` statistic denotes a small maximal divergence observed between the empirical cumulative distribution functions of the two datasets. The p-value obtained from the exact test  implys that at a 5% level of significance, there is insufficient evidence to reject the null hypothesis positing that the two samples are derived from an identical distribution.
+
+## Sample Size of 100
+
+A sample size of one hundred, not classified as small, necessitates the utilization of the asymptotic two-sample test. The reduction of the `D` statistic insinuates a marginal diminution in the differences between the data sets in comparison to a sample size of ten. The p-value considerably surpasses the 5% significance threshold, signifying our inability to repudiate the null hypothesis that the two samples emanate from the same distribution.
+
+## Sample Size of 1000
+
+A sample size of one thousand connotes a large dataset, which in turn prompts the automatic adoption of the asymptotic two-sample test. The `D` statistic is minimum of the three sample size, suggesting that the disparity between the two datasets is trivial when the sample size is amplified. The p-value indicates that, from a statistical standpoint, we cannot dismiss the null hypothesis, regardless of whether the significance level is 5% or 1%. At this sample size echelon, the asymptotic test affords dependable outcomes and surpasses the exact test in computational efficiency.
+
+## Summary
+
+When the sample size is ten, the `D` value possibly reflects differences attributable to the inherent variability of small samples, with random fluctuations leading to ostensible but statistically non-reliable disparities. Strictly speaking, a sample size of one hundred does not constitute a large sample; therefore, the reliability of the asymptotic two-sample test results may be slightly inferior to those obtained from the K-S test with a sample size of one thousand. The most reliable test results are observed with a sample size of one thousand, where the sampling error is negligible, and the distribution of the test statistic is presumed to be in close approximation to its theoretical asymptotic distribution.
+
+In summary, a progressive decline in the `D` value is observed with increasing sample sizes, likely due to larger samples furnishing more accurate distribution estimates, thereby curtailing sampling errors. Yet, the p-values uniformly suggest the absence of sufficient statistical evidence to declare a discrepancy, based on the data and the test applied. Although the K-S test results' consistency across varying sample sizes strengthens the proposition that the sample data originate from the proffered distribution, it is equally imperative to acknowledge that non-significant results do not inherently validate the sameness of the two distributions.
+
+\vspace{1cm}
+
+# Conclusion
+
+This report utilizes the rejection algorithm to generate samples and assesses their characteristics as per our expectations by generating and analyzing diagnostic plots and conducting the Kolmogorov-Smirnov test. The samples were subsequently evaluated using cumulative distribution functions and probability density functions, with both diagnostic plots demonstrating high consistency. This confirms the rationality of our settings in the rejection algorithm, such as the envelope function, rejection constant, and normalization constant.
+
+Additionally, we conducted the Kolmogorov-Smirnov test on samples of varying sizes, from small to large. The results indicate that as the sample size increases, the difference between the empirical and theoretical distributions decreases. Moreover, the p-values suggest that there is no significant statistical difference between the sample and theoretical distributions. The consistency of results across different sample sizes enhances the reliability of our sampling method, and it is assumed that the sample data closely align with the theoretical function. However, it must be acknowledged that the lack of significant differences in the K-S test does not necessarily mean that the distributions are exactly the same. Factors such as sample size, bin size selection, or model fitting might influence the test results and require further investigation.
+
+Therefore, the subtle differences observed in the analysis underscore the importance of carefully considering sample size and statistical methods in inferential studies.

@@ -1,0 +1,273 @@
+---
+title: "GARCH_USD_GBP-Report"
+date: "`r Sys.Date()`"
+header-includes:
+  - \usepackage{geometry}
+  - \geometry{left=1.5cm, top=1.5cm, right=1.5cm, bottom=1.5cm}
+output: 
+  pdf_document:
+    latex_engine: lualatex
+  html_document:
+    latex_engine: lualatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+In this report, I will conduct data processing on the Forex daily close data for the USD to GBP exchange and fit several time series models, thereby analyzing the change in volatility in the exchange rate before and after the credit crisis.
+
+\vspace{0.5cm}
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(fGarch)
+library(forecast)
+```
+
+Initially, load the data set, followed by the construction of the time series plot, the Autocorrelation Function (ACF) plot, the Partial Autocorrelation Function (PACF) plot, and the histogram.
+
+```{r, fig.width=6, fig.height=4,fig.cap="Comprehensive Analysis of USD/GBP Exchange Rate Time Series Data"}
+# Task 3
+data = read.csv("/Users/jiyuzhang/Desktop/Leeds\ Master/semester_1/Applied\ stat\ and\ prob/Coursework/USD-GBP.csv")
+data_tts = ts(data$USD.GBP.Close)
+par(mar = c(4, 4, 3, 2))
+par(mfrow = c(2, 2)) 
+plot(data_tts, type = 'l', main="Time series of USD.GBP.Close data")
+abline(v=1892,col='blue',lty = 2)
+acf(data_tts)
+pacf(data_tts)
+hist(data_tts, breaks = 300)
+```
+
+From the time series plot in Figure 1, it is evident that the data exhibits a pattern formed by certain trend changes, and both the Autocorrelation Function (ACF) plot and the histogram similarly show the correlation of the time series with its own past values at different lags. Thus, the data is not stationary. Then we consider the logarithmic returns to the data time series and the data will be subjected to logarithmic transformation and first-order differencing.
+
+```{r}
+data_log = log(data$USD.GBP.Close) # Logarithmic transformation
+data_ts=diff(data_log) # First-order difference
+```
+
+
+```{r, fig.width=5, fig.height=3,fig.cap="Stationarity and Autocorrelation Analysis of Differenced Time Series Data"}
+par(mar = c(4, 4, 3, 2)) # Set the graphical parameters
+par(mfrow = c(2, 2)) 
+# Plot the Differenced logarithmim Time Series Data
+plot(data_ts, type = 'l', main="Differenced logarithmim TS Data") 
+abline(v=1892,col='blue',lty = 2) # Divide them by credit crisis
+acf(data_ts) # Show the ACF plot of Differenced logarithmim Time Series Data
+pacf(data_ts) # Show the PACF plot of Differenced logarithmim Time Series Data
+#Show the histogram of Differenced logarithmim Time Series Data
+hist(data_ts, breaks = 300) 
+```
+
+The time series plot in Figure 2 does not exhibit a clear trend, appearing to have a constant mean, and the Autocorrelation Function (ACF) values rapidly decrease to within the confidence interval denoted by the blue line after lag 0. Moreover, the histogram also indicates that the transformed data is concentrated around zero in a form resembling a normal distribution and exhibits symmetry. These aspects sufficiently demonstrate that the transformed data is stationary. However, the time series plot reveals that the data's volatility is not consistently stable, with some parts concentrated in the middle and others exhibiting significant standard deviations. Next, we will divide the data into two segments, using the credit crisis as a demarcation line, to discuss and compare their volatilities separately.
+
+```{r}
+# Set the time series data before the credit crisis
+data_notcc = data_ts[0:1892]
+# Set the time series data after the credit crisis
+data_cc = data_ts[1893:3131]
+# Remove missing values.
+data_cc = na.omit(data_cc)
+names(data_cc) = names(data_cc)[1:length(data_cc)]
+y_notcc = ts((data_notcc)^2) # Squared data before the credit crisis
+y_cc = ts((data_cc)^2) # Squared data after the credit crisis
+# Fit a best ARIMA model to data before the credit crisis
+armamodel = auto.arima(data_notcc)
+# Fit a best ARIMA model to data after the credit crisis
+armamodel_cc = auto.arima(data_cc)
+armamodel$coef # Show the coefficients of the model
+armamodel_cc$coef # Show the coefficients of the model
+```
+
+Initially, we fit the optimal ARIMA models for the two time series data based on the Akaike Information Criterion (AIC) values to identify the most suitable ARIMA model parameters. It is evident that for both time series data, the optimal parameter settings are (0, 0, 1).
+
+```{r, fig.width=5, fig.height=3,fig.cap="Autocorrelation Analysis of Squared Time Series Data Before and After Transformation"}
+par(mar = c(4, 4, 3, 2)) # Set the graphical parameters
+par(mfrow = c(2, 2)) 
+# Show the ACF and PACF plots to the 2 squared data series
+acf(y_notcc)
+pacf(y_notcc)
+acf(y_cc)
+pacf(y_cc)
+```
+
+From the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) plots of the two squared time series (Figure 3), it can be observed that for the time series prior to the credit crisis, the ACF values decline rapidly and stay within the 95% confidence interval. This indicates the absence of significant autocorrelation at higher lags. However, the PACF plot does not exhibit significant partial autocorrelation, suggesting that an AR(p) model may not be suitable for fitting this time series.
+
+The ACF plot of the time series after crisis resembles that of the pre-crisis series, with a rapid decline and maintenance within the confidence interval. However, the PACF plot differs, as the PACF values at certain lags exceed the confidence interval. This implies the need for more complex models to capture the dynamics of the squared series, such as the ARCH model or the GARCH model.
+
+\vspace{0.5cm}
+
+Next, we will attempt to fit different parameterized GARCH models to the time series before the credit crisis. Initially, we will adjust the parameter 'p' in the GARCH(p, 2) model, setting the parameters of the ARIMA component to the previously determined optimal values (0, 1).
+```{r, warning=FALSE}
+# Fit Garch models to data before the credit crisis 
+garchmodel_1 = garchFit(formula = ~arma(0,1)+ garch(3, 2),
+        data = data_notcc, trace=F) 
+garchmodel_2 = garchFit(formula = ~arma(0,1)+ garch(4, 2),
+        data = data_notcc, trace=F)
+garchmodel_3 = garchFit(formula = ~arma(0,1)+ garch(5, 2),
+        data = data_notcc, trace=F)
+garchmodel_4 = garchFit(formula = ~arma(0,1)+ garch(6, 2),
+        data = data_notcc, trace=F)
+# Create a list to store models' AIC values
+models_AIC = list(GARCH_AIC_32 = as.numeric(garchmodel_1@fit$ic[1]), 
+                  GARCH_AIC_42 = as.numeric(garchmodel_2@fit$ic[1]), 
+                  GARCH_AIC_52 = as.numeric(garchmodel_3@fit$ic[1]),
+                  GARCH_AIC_62 = as.numeric(garchmodel_4@fit$ic[1]))
+# Create a list to store models' residuals
+models_residual = list(GARCH_32 = garchmodel_1@residuals,
+                       GARCH_42 = garchmodel_2@residuals, 
+                       GARCH_52 = garchmodel_3@residuals,
+                       GARCH_62 = garchmodel_4@residuals)
+# Apply Ljung-Box test to the models' residuals
+LBtest_values = sapply(models_residual, 
+                       function(resid) Box.test(resid, type = "Ljung-Box"))
+for(i in names(models_AIC)) {cat(i, "=", models_AIC[[i]], " ")} # Show AICs
+print(LBtest_values) # Show the results of Ljung-Box tests to compare
+```
+
+By comparing the Akaike Information Criterion (AIC) values, it is determined that the GARCH(p, q) model achieves the lowest AIC value when the parameter 'p' is set to 6. However, each model performs poorly in the Ljung-Box test, exhibiting very low p-values, indicating strong autocorrelation in the residuals. Therefore, we decide to fix the parameter 'p' at 6 and experiment with different values for the parameter 'q' to find a better model and improve its performance in the Ljung-Box test.
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Fit Garch models to data before the credit crisis with parameter(6, n)
+garchmodel_6 = garchFit(formula = ~arma(0,1)+ garch(6, 1),
+        data = data_notcc, trace=F)
+garchmodel_7 = garchFit(formula = ~arma(0,1)+ garch(6, 3),
+        data = data_notcc, trace=F)
+garchmodel_8 = garchFit(formula = ~arma(0,1)+ garch(6, 6),
+        data = data_notcc, trace=F)
+```
+
+```{r}
+# Create a list to store models' AIC values
+model2_AIC = list(GARCH_AIC_61 = as.numeric(garchmodel_6@fit$ic[1]), 
+                  GARCH_AIC_62 = as.numeric(garchmodel_4@fit$ic[1]), 
+                  GARCH_AIC_63 = as.numeric(garchmodel_7@fit$ic[1]),
+                  GARCH_AIC_64 = as.numeric(garchmodel_8@fit$ic[1]))
+# Create a list to store models' residuals
+model2_residual = list(GARCH_61 = garchmodel_6@residuals,
+                       GARCH_62 = garchmodel_4@residuals, 
+                       GARCH_63 = garchmodel_7@residuals,
+                       GARCH_64 = garchmodel_8@residuals)
+# Apply Ljung-Box test to the models' residuals
+LBtest_values2 = sapply(model2_residual, 
+                        function(resid) Box.test(resid, type = "Ljung-Box"))
+for(i in names(model2_AIC)) {cat(i, "=", model2_AIC[[i]], " ")} # Show AICs
+print(LBtest_values2) # Show the results of Ljung-Box tests to compare
+```
+
+Through the comparison of Akaike Information Criterion (AIC) values, the optimal model selected is GARCH(6, 4), which has the lowest AIC value of -7.613897. However, models with different values of the parameter 'q' in the GARCH model exhibit the same issue as in the previous section, performing poorly in the Ljung-Box test with very low p-values. Consequently, I explored additional adjustments to parameters, residual types, and the number of lags in the Ljung-Box test in an extraneous part of the report (not displayed in the report), but none of the models achieved a significantly higher p-value in the Ljung-Box test.
+
+This could be due to these GARCH models not adequately capturing the conditional heteroskedasticity in the data, as depicted in the time series plot in Figure 2. It might also be attributed to potentially more complex structures in the time series, such as structural changes, long memory properties, or nonlinear dynamics, which may not have been considered in the current GARCH models. Long memory processes mean that shocks in the data have prolonged effects on future volatility, beyond what is typically assumed in standard GARCH models. It may be more appropriate to use long memory GARCH models, like the Fractionally Integrated GARCH (FIGARCH) model, to better describe the data.
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Fit Garch models to data after the credit crisis
+garchmodel_1cc = garchFit(formula = ~arma(0,1)+ garch(1, 1),
+        data = data_cc, trace=F)
+garchmodel_2cc = garchFit(formula = ~arma(0,1)+ garch(2, 1),
+        data = data_cc, trace=F)
+garchmodel_3cc = garchFit(formula = ~arma(0,1)+ garch(3, 1),
+        data = data_cc, trace=F)
+garchmodel_4cc = garchFit(formula = ~arma(0,1)+ garch(4, 1),
+        data = data_cc, trace=F)
+```
+
+\vspace{0.5cm}
+
+Next, we apply the same method to fit and compare GARCH models for the time series data following the credit crisis.
+
+```{r}
+# Create a list to store models' AIC values
+modelscc_AIC = list(GARCHcc_AIC_11 = as.numeric(garchmodel_1cc@fit$ic[1]), 
+                  GARCHcc_AIC_21 = as.numeric(garchmodel_2cc@fit$ic[1]), 
+                  GARCHcc_AIC_31 = as.numeric(garchmodel_3cc@fit$ic[1]),
+                  GARCHcc_AIC_41 = as.numeric(garchmodel_4cc@fit$ic[1]))
+# Create a list to store models' residuals
+modelscc_residual = list(GARCHcc_11 = garchmodel_1cc@residuals,
+                       GARCHcc_21 = garchmodel_2cc@residuals, 
+                       GARCHcc_31 = garchmodel_3cc@residuals,
+                       GARCHcc_41 = garchmodel_4cc@residuals)
+# Apply Ljung-Box test to the models' residuals
+LBtestcc_values = sapply(modelscc_residual, 
+                         function(resid) Box.test(resid, type = "Ljung-Box"))
+for(i in names(modelscc_AIC)) {cat(i, "=", modelscc_AIC[[i]], " ")} # Show AICs
+print(LBtestcc_values) # Show the results of Ljung-Box tests to compare
+```
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Fit Garch models to data after the credit crisis with parameter(2, n)
+garchmodel_6cc = garchFit(formula = ~arma(0,1)+ garch(2, 2),
+        data = data_cc, trace=F)
+garchmodel_7cc = garchFit(formula = ~arma(0,1)+ garch(2, 3),
+        data = data_cc, trace=F)
+garchmodel_8cc = garchFit(formula = ~arma(0,1)+ garch(2, 4),
+        data = data_cc, trace=F)
+```
+```{r}
+# Create a list to store models' AIC values
+model2cc_AIC = list(GARCH_AIC_21 = as.numeric(garchmodel_2cc@fit$ic[1]), 
+                  GARCH_AIC_22 = as.numeric(garchmodel_6cc@fit$ic[1]), 
+                  GARCH_AIC_23 = as.numeric(garchmodel_7cc@fit$ic[1]),
+                  GARCH_AIC_24 = as.numeric(garchmodel_8cc@fit$ic[1]))
+# Create a list to store models' residuals
+mdl2cc_res = list(GARCH_21 = garchmodel_2cc@residuals,
+                       GARCH_22 = garchmodel_6cc@residuals, 
+                       GARCH_23 = garchmodel_7cc@residuals,
+                       GARCH_24 = garchmodel_8cc@residuals)
+# Apply Ljung-Box test to the models' residuals
+LBcc_2 = sapply(mdl2cc_res, function(resid) Box.test(resid, type = "Ljung-Box"))
+for(i in names(model2cc_AIC)) {cat(i, "=", model2cc_AIC[[i]], " ")} # Show AICs
+print(LBcc_2) # Show the results of Ljung-Box tests to compare
+```
+
+During the fitting of GARCH models to the time series data post-credit crisis, these models showed significantly better performance in the Ljung-Box test compared to the data prior to the credit crisis. The p-values for these models were generally sufficient to not reject the null hypothesis at a 5% significance level, indicating a lack of strong autocorrelation in the residuals. This suggests that the GARCH models have a high degree of fit for the time series data following the credit crisis.
+
+\vspace{0.3cm}
+
+Finally, we analyze the characteristics of the two time series data sets by observing the parameters in the two optimal GARCH models. This analysis involves examining the estimated parameters in each model and interpreting their implications on the behavior of the respective time series. By comparing these parameters, insights can be gained into how the volatility dynamics of the time series data may have changed before and after the credit crisis, and what this might indicate about the underlying financial conditions or market behaviors during these periods.
+
+***Theoretical Background***(MATH5315M Lecture Notes, 2023)
+
+The GARCH(\(p^*, q^*\)) model:
+
+\[
+GARCH(p^*, q^*) : \nu_t = \sigma_t z_t, \quad z_t \sim G_z(0, 1) \quad i.i.d.
+\]
+
+\[
+\sigma_t^2 = \omega + \sum_{i=1}^{q^*} \alpha_i \nu_{t-i}^2 + \sum_{j=1}^{p^*} \beta_j \sigma_{t-j}^2,
+\]
+
+with \(\omega > 0\), \(\alpha_i \geq 0\), \(\beta_j \geq 0\).
+
+The \(\alpha\) parameter in a GARCH model represents the direct impact of the squared residual from the previous period on the current variance. It reflects the short-term effect of news or information shocks on volatility. 
+
+The \(\beta\) parameter, on the other hand, represents the influence of the previous period's conditional variance on the current variance. It reflects the persistence of volatility.
+
+The \(omega\) parameter is a part of the long-term variance and represents the long-term volatility level. 
+
+```{r}
+garchmodel_8@fit$par
+garchmodel_2cc@fit$par
+lb_test = Box.test(garchmodel_8@residuals, type = "Ljung-Box")
+lbcc_test = Box.test(garchmodel_2cc@residuals, type = "Ljung-Box")
+print(lb_test)
+print(lbcc_test)
+```
+
+From the parameter outputs of these two models, it can be discerned that the first model contains two significantly greater than zero \(\alpha\)  parameters, \(\alpha_1\) and \(\alpha_6\), indicating that short-term news or information has a considerable impact on current volatility. In contrast, the second model's alpha parameters include only one significant but smaller \(\alpha_2\), suggesting a diminished influence of short-term news on volatility.
+
+Regarding the beta parameters, the first model's \(\beta_1\) parameter is significantly greater than zero, indicating a certain persistence in volatility. The \(\beta_1\) parameter in the second model is very close to 1, signifying that past volatility has an extremely enduring impact on current volatility. This typically suggests a high degree of persistence in volatility, where new information has minimal influence on future volatility.
+
+The \(omega\) parameters in both models are very small, implying insufficient evidence to suggest significant long-term volatility in the data.
+
+The second model's Ljung-Box test yields a p-value close to the 5% significance level, which may indicate that this model better captures the volatility of the time series.
+
+However, as mentioned previously, the first model's Ljung-Box test results in a very small p-value and a smaller X-squared value, signifying the presence of autocorrelation in the residuals. This suggests that the model has not adequately captured the time series' volatility, or it could imply that the volatility of the time series before the credit crisis is too complex to be sufficiently modeled by a GARCH model.
+
+# Conclusion
+
+In summary, the volatility of the exchange rate before the credit crisis was greater and more complex compared to the period after the crisis, making it challenging for the GARCH model to fully capture and fit accurately. While the pre-crisis exchange rate volatility did exhibit some persistence, it was more significantly influenced by short-term information, indicating higher sensitivity to immediate news. Generally, if a time series is more sensitive to newly received short-term information, it tends to be less influenced by long-term factors, leading to relatively lower persistence in volatility. Post-crisis exchange rate volatility, on the other hand, was comparatively more stable and easier to model accurately with GARCH, capturing key information effectively.
+
+From a real-world perspective, this phenomenon is explainable. A credit crisis can lead to additional volatility and structural changes in exchange rates. Market sentiments and behaviors during a crisis might result in time series characteristics that significantly diverge from the norm, making them extremely sensitive to short-term information. During extreme events like a credit crisis, market behaviors might exhibit non-linear dynamics, leverage effects, or other complex patterns, making standard GARCH models less effective in capturing the true structure of the data's volatility(Gertler, 2020).
+
+This not only highlights the impact of extreme events on exchange rate volatility but also demonstrates the limitations of GARCH models. While GARCH models may capture volatility effectively during stable market periods, more complex models may be required to analyze extreme market conditions like financial crises. These could include models incorporating time-varying volatility or asymmetric effects that can accurately analyze and fit rapidly changing information in the short term.
